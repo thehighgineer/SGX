@@ -22,7 +22,7 @@
   <body>
     <!-- Control panel -->
     <div id="controls">
-      <h1>SGX Particle Visualizer</h1>
+      <h1>SGX Visualizer</h1>
       <div class="control-group">
         <label for="particleCount">Number of particles</label>
         <input type="number" id="particleCount" min="1" max="2000" value="300" />
@@ -53,7 +53,9 @@
       </div>
       <div class="control-group">
         <label for="sizeRange">Particle size</label>
-        <input type="range" id="sizeRange" min="1" max="20" value="6" />
+        <!-- Increase max to allow much larger particles -->
+        <!-- Allow much larger particle sizes: set max to 100 -->
+        <input type="range" id="sizeRange" min="1" max="100" value="6" />
       </div>
       <div class="control-group">
         <label for="glowRange">Glow intensity</label>
@@ -87,11 +89,57 @@
       <div class="control-group">
         <button id="embedButton">Generar Embed</button>
       </div>
+      <!-- Toggle advanced panel -->
+      <div class="control-group">
+        <button id="advancedToggle">Advanced Controls</button>
+      </div>
+      <!-- Advanced controls panel hidden by default -->
+      <div id="advancedPanel" style="display:none;">
+        <div class="control-group">
+          <label for="colourPicker2">Second colour</label>
+          <input type="color" id="colourPicker2" value="#32527b" />
+        </div>
+        <div class="control-group">
+          <label for="colourPicker3">Third colour</label>
+          <input type="color" id="colourPicker3" value="#fdcc0d" />
+        </div>
+        <div class="control-group">
+          <label for="bgColorPicker">Background colour</label>
+          <input type="color" id="bgColorPicker" value="#000000" />
+        </div>
+        <div class="control-group">
+          <label for="alphaRange">Particle transparency</label>
+          <input type="range" id="alphaRange" min="0" max="100" value="100" />
+        </div>
+        <div class="control-group">
+          <label for="rotationRange">Rotation speed</label>
+          <input type="range" id="rotationRange" min="0" max="20" value="0" />
+        </div>
+        <div class="control-group">
+          <label for="resolutionRange">Resolution (%)</label>
+          <input type="range" id="resolutionRange" min="50" max="200" value="100" />
+        </div>
+        <div class="control-group">
+          <label for="micSensitivityRange">Mic sensitivity</label>
+          <input type="range" id="micSensitivityRange" min="0" max="100" value="50" />
+        </div>
+        <div class="control-group">
+          <button id="randomizeButton">Randomize</button>
+        </div>
+        <!-- Custom config overrides: allow live editing of CONFIG values via JSON -->
+        <div class="control-group">
+          <label for="customConfigInput">Custom config (JSON)</label>
+          <textarea id="customConfigInput" rows="4" placeholder='{"particleBaseSize":10,"glow":5,"pointerStrength":50}'></textarea>
+          <button id="applyConfigButton">Apply Config</button>
+        </div>
+      </div>
       <!-- Branding -->
-      <div id="branding">Spatialgineers Visualizer</div>
+      <div id="branding">SGX Visualizer</div>
     </div>
     <!-- Rendering canvas -->
     <canvas id="canvas"></canvas>
+    <!-- Branding overlay for embed/clean modes -->
+    <div id="brandingOverlay">SGX Visualizer</div>
     <script src="script.js"></script>
   </body>
 </html>

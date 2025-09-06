@@ -34,6 +34,22 @@
   const clearPathButton = document.getElementById('clearPath');
   const resetParticlesButton = document.getElementById('resetParticles');
 
+  // Additional UI elements
+  const colourPicker2 = document.getElementById('colourPicker2');
+  const colourPicker3 = document.getElementById('colourPicker3');
+  const bgColorPicker = document.getElementById('bgColorPicker');
+  const alphaRange = document.getElementById('alphaRange');
+  const rotationRange = document.getElementById('rotationRange');
+  const resolutionRange = document.getElementById('resolutionRange');
+  const micSensitivityRange = document.getElementById('micSensitivityRange');
+  const randomizeButton = document.getElementById('randomizeButton');
+  const advancedToggle = document.getElementById('advancedToggle');
+  const advancedPanel = document.getElementById('advancedPanel');
+  const brandingOverlay = document.getElementById('brandingOverlay');
+  const controlsDiv = document.getElementById('controls');
+  const customConfigInput = document.getElementById('customConfigInput');
+  const applyConfigButton = document.getElementById('applyConfigButton');
+
   // State
   let particles = [];
   let particleTextures = [];
@@ -46,6 +62,16 @@
   let emitterShape = shapeSelect.value;
   let particleColour = colourPicker.value;
   let invertedColour = invertHex(particleColour);
+  // Additional state
+  let particleColours = [colourPicker.value, colourPicker2 ? colourPicker2.value : colourPicker.value, colourPicker3 ? colourPicker3.value : colourPicker.value];
+  let backgroundColour = bgColorPicker ? bgColorPicker.value : '#000000';
+  let particleAlpha = alphaRange ? alphaRange.value / 100 : 1;
+  let rotationSpeed = rotationRange ? rotationRange.value / 100 : 0;
+  let resolutionFactor = resolutionRange ? resolutionRange.value / 100 : 1;
+  let micSensitivity = micSensitivityRange ? micSensitivityRange.value / 100 : 1;
+  let controlsHidden = false;
+  // Flag for embed mode (no controls)
+  let embedMode = false;
   // Audio and pointer
   let micEnabled = false;
   let audioCtx = null;
@@ -88,11 +114,12 @@
    * on initialisation and whenever the window size changes.
    */
   function resizeCanvas() {
-    const dpr = window.devicePixelRatio || 1;
+    const dprBase = window.devicePixelRatio || 1;
+    const dpr = dprBase * resolutionFactor;
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * dpr;
     canvas.height = rect.height * dpr;
-    ctx.scale(dpr, dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 
   /**
@@ -159,6 +186,8 @@
         y: 0,
         vx: 0,
         vy: 0,
+        // assign a base colour randomly from available colours
+        baseColour: particleColours[Math.floor(Math.random() * particleColours.length)],
         colour: particleColour,
         size: CONFIG.particleBaseSize + Math.random() * 2,
         texture: null,
@@ -301,10 +330,12 @@
    */
   function drawParticle(p) {
     const size = p.size;
+    ctx.save();
+    // global alpha for transparency
+    ctx.globalAlpha = particleAlpha;
     // set shadow (glow) per particle
     ctx.shadowColor = p.colour;
     ctx.shadowBlur = CONFIG.glow;
-    ctx.save();
     ctx.translate(p.x, p.y);
     if (p.rotation) ctx.rotate(p.rotation);
     if (p.texture) {
@@ -435,11 +466,13 @@
    * interactions, particle updates and rendering.
    */
   function animate() {
-    // Clear
+    // Clear and draw background colour or texture
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Draw background
     if (backgroundTexture) {
       ctx.drawImage(backgroundTexture, 0, 0, canvas.width, canvas.height);
+    } else {
+      ctx.fillStyle = backgroundColour;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
     // Update audio
     if (micEnabled && analyser) {
@@ -453,9 +486,7 @@
     } else {
       micAmplitude = 0;
     }
-    // Determine current interpolated colour
-    const base = particleColour;
-    const inv = invertedColour;
+    // Lerp between base colour and its inverse based on microphone amplitude and sensitivity
     const lerpColour = (a, b, t) => {
       const ar = parseInt(a.substr(1, 2), 16);
       const ag = parseInt(a.substr(3, 2), 16);
@@ -468,18 +499,28 @@
       const bcol = Math.round(ab + (bb - ab) * t);
       return '#' + ((1 << 24) + (r << 16) + (g << 8) + bcol).toString(16).slice(1);
     };
-    const currentColour = lerpColour(base, inv, micAmplitude);
+    // Amplify microphone effect: multiply and clamp to [0,1].  Increase factor to 5
+    // to make mic influence more noticeable on colour, speed and size.
+    let micAmp = micAmplitude * micSensitivity * 5;
+    if (micAmp > 1) micAmp = 1;
     // Update config from sliders
     CONFIG.particleBaseSize = parseFloat(sizeRange.value);
     CONFIG.glow = parseFloat(glowRange.value);
     CONFIG.pointerStrength = parseFloat(pointerRange.value);
     const speedMultiplier = parseFloat(speedRange.value) / 10;
-    CONFIG.baseSpeed = speedMultiplier * (1 + micAmplitude);
+    // baseSpeed increases with mic amplitude
+    CONFIG.baseSpeed = speedMultiplier * (1 + micAmp);
     // Update and draw particles
     particles.forEach(p => {
-      // update colour and size
-      p.colour = currentColour;
-      p.size = CONFIG.particleBaseSize + Math.random() * 2;
+      // update colour and size based on mic amplitude
+      const invCol = invertHex(p.baseColour);
+      p.colour = lerpColour(p.baseColour, invCol, micAmp);
+      // base size plus mic influence
+      p.size = CONFIG.particleBaseSize + Math.random() * 2 + micAmp * CONFIG.particleBaseSize;
+      // update rotation for textures
+      if (rotationSpeed > 0) {
+        p.rotation = (p.rotation || 0) + rotationSpeed * CONFIG.baseSpeed;
+      }
       if (pathPoints.length >= 2 && emitterShape === 'draw') {
         p.dist += CONFIG.baseSpeed;
         if (p.dist > totalPathLength) p.dist -= totalPathLength;
@@ -533,10 +574,14 @@
     if (behaviour === 'bars' && freqData) {
       const barW = canvas.width / CONFIG.barCount;
       ctx.save();
+      // ensure full opacity for bars
+      ctx.globalAlpha = 1;
       for (let i = 0; i < CONFIG.barCount; i++) {
         const val = freqData[i] / 255;
         const h = val * canvas.height * 0.5;
-        ctx.fillStyle = currentColour;
+        // colour per bar based on first base colour
+        const barCol = lerpColour(particleColours[0], invertHex(particleColours[0]), val);
+        ctx.fillStyle = barCol;
         ctx.fillRect(i * barW, canvas.height - h, barW - 2, h);
       }
       ctx.restore();
@@ -625,15 +670,118 @@
       params.set('count', countInput.value);
       params.set('shape', shapeSelect.value);
       params.set('behaviour', behaviourSelect.value);
-      params.set('colour', particleColour.replace('#', ''));
+      // encode multiple colours joined by commas
+      const cols = particleColours.map(c => c.replace('#', '')).join(',');
+      params.set('colours', cols);
       params.set('size', sizeRange.value);
       params.set('glow', glowRange.value);
       params.set('speed', speedRange.value);
       params.set('pointer', pointerRange.value);
       params.set('mic', micCheckbox.checked ? '1' : '0');
-      const url = window.location.pathname.replace(/^\/.*\//, '') + '?' + params.toString();
-      const embed = `<iframe src="${url}" width="800" height="600" frameborder="0"></iframe>`;
+      params.set('alpha', alphaRange ? alphaRange.value : '100');
+      params.set('rotation', rotationRange ? rotationRange.value : '0');
+      params.set('resolution', resolutionRange ? resolutionRange.value : '100');
+      params.set('micsens', micSensitivityRange ? micSensitivityRange.value : '50');
+      params.set('bg', bgColorPicker ? bgColorPicker.value.replace('#','') : '000000');
+      params.set('embed', '1');
+      const base = window.location.origin + window.location.pathname;
+      const url = `${base}?${params.toString()}`;
+      const embed = `<iframe src="${url}" width="800" height="600" style="border:0;" allowfullscreen></iframe>`;
       window.prompt('Copia el siguiente embed para usar en otra página:', embed);
+    });
+
+    // Additional listeners for advanced controls
+    if (colourPicker2) {
+      colourPicker2.addEventListener('input', () => {
+        particleColours[1] = colourPicker2.value;
+        initParticles();
+      });
+    }
+    if (colourPicker3) {
+      colourPicker3.addEventListener('input', () => {
+        particleColours[2] = colourPicker3.value;
+        initParticles();
+      });
+    }
+    if (bgColorPicker) {
+      bgColorPicker.addEventListener('input', () => {
+        backgroundColour = bgColorPicker.value;
+        document.body.style.backgroundColor = backgroundColour;
+      });
+    }
+    if (alphaRange) {
+      alphaRange.addEventListener('input', () => {
+        particleAlpha = parseFloat(alphaRange.value) / 100;
+      });
+    }
+    if (rotationRange) {
+      rotationRange.addEventListener('input', () => {
+        rotationSpeed = parseFloat(rotationRange.value) / 100;
+      });
+    }
+    if (resolutionRange) {
+      resolutionRange.addEventListener('input', () => {
+        resolutionFactor = parseFloat(resolutionRange.value) / 100;
+        resizeCanvas();
+        // reposition path and particles
+        if (emitterShape !== 'draw') generatePresetShape(emitterShape);
+        initParticles();
+      });
+    }
+    if (micSensitivityRange) {
+      micSensitivityRange.addEventListener('input', () => {
+        micSensitivity = parseFloat(micSensitivityRange.value) / 100;
+      });
+    }
+    if (randomizeButton) {
+      randomizeButton.addEventListener('click', () => {
+        randomizeSettings();
+      });
+    }
+    if (advancedToggle) {
+      advancedToggle.addEventListener('click', () => {
+        if (advancedPanel.style.display === 'none' || advancedPanel.style.display === '') {
+          advancedPanel.style.display = 'block';
+        } else {
+          advancedPanel.style.display = 'none';
+        }
+      });
+    }
+    // Apply custom configuration values from JSON input
+    if (applyConfigButton) {
+      applyConfigButton.addEventListener('click', () => {
+        if (!customConfigInput) return;
+        const text = customConfigInput.value.trim();
+        if (!text) return;
+        try {
+          const overrides = JSON.parse(text);
+          Object.keys(overrides).forEach(k => {
+            const val = overrides[k];
+            // Attempt to parse numeric values; otherwise assign directly
+            const num = parseFloat(val);
+            CONFIG[k] = isNaN(num) ? val : num;
+          });
+          // Recreate shapes and particles if configuration impacting counts/sizes changed
+          if (overrides.particleBaseSize || overrides.maxParticles) {
+            initParticles();
+          }
+        } catch (err) {
+          console.error('Invalid JSON for custom config', err);
+          alert('Invalid JSON in custom config');
+        }
+      });
+    }
+    // Keyboard shortcut to hide/show controls
+    window.addEventListener('keydown', e => {
+      // Toggle controls only if not in embed mode
+      if (!embedMode && (e.key === 'h' || e.key === 'H')) {
+        controlsHidden = !controlsHidden;
+        if (controlsHidden) {
+          controlsDiv.classList.add('hidden');
+        } else {
+          controlsDiv.classList.remove('hidden');
+        }
+      }
     });
   }
 
@@ -659,6 +807,14 @@
       particleColour = col;
       invertedColour = invertHex(col);
     }
+    // Support multiple colours encoded by comma separated hex strings
+    if (params.has('colours')) {
+      const cols = params.get('colours').split(',');
+      if (cols.length >= 1) colourPicker.value = '#' + cols[0];
+      if (colourPicker2 && cols.length >= 2) colourPicker2.value = '#' + cols[1];
+      if (colourPicker3 && cols.length >= 3) colourPicker3.value = '#' + cols[2];
+      particleColours = cols.map(c => '#' + c);
+    }
     if (params.has('size')) sizeRange.value = params.get('size');
     if (params.has('glow')) glowRange.value = params.get('glow');
     if (params.has('speed')) speedRange.value = params.get('speed');
@@ -667,6 +823,37 @@
       micCheckbox.checked = params.get('mic') === '1';
       micEnabled = micCheckbox.checked;
       if (micEnabled) initAudio();
+    }
+    if (params.has('alpha') && alphaRange) {
+      alphaRange.value = params.get('alpha');
+      particleAlpha = parseFloat(alphaRange.value) / 100;
+    }
+    if (params.has('rotation') && rotationRange) {
+      rotationRange.value = params.get('rotation');
+      rotationSpeed = parseFloat(rotationRange.value) / 100;
+    }
+    if (params.has('resolution') && resolutionRange) {
+      resolutionRange.value = params.get('resolution');
+      resolutionFactor = parseFloat(resolutionRange.value) / 100;
+    }
+    if (params.has('micsens') && micSensitivityRange) {
+      micSensitivityRange.value = params.get('micsens');
+      micSensitivity = parseFloat(micSensitivityRange.value) / 100;
+    }
+    if (params.has('bg') && bgColorPicker) {
+      const bgCol = '#' + params.get('bg');
+      bgColorPicker.value = bgCol;
+      backgroundColour = bgCol;
+      document.body.style.backgroundColor = bgCol;
+    }
+    if (params.has('embed')) {
+      // Hide controls for embed mode
+      controlsHidden = true;
+      controlsDiv.classList.add('hidden');
+      // Hide advanced panel
+      if (advancedPanel) advancedPanel.style.display = 'none';
+      // Mark embed mode so controls cannot be toggled back
+      embedMode = true;
     }
     initParticles();
   }
@@ -690,6 +877,61 @@
       micEnabled = false;
       micCheckbox.checked = false;
     });
+  }
+
+  /**
+   * Randomly choose settings for a unique visual.  All UI inputs are
+   * assigned random values within their ranges and then particles are
+   * reinitialised.  Colours are randomised across all three pickers,
+   * behaviours and shapes selected randomly, and optional features
+   * toggled.
+   */
+  function randomizeSettings() {
+    // Particle count
+    countInput.value = Math.floor(Math.random() * CONFIG.maxParticles) + 1;
+    // Shape
+    const shapes = Array.from(shapeSelect.options).map(o => o.value);
+    shapeSelect.value = shapes[Math.floor(Math.random() * shapes.length)];
+    emitterShape = shapeSelect.value;
+    // Behaviour
+    const behaviours = Array.from(behaviourSelect.options).map(o => o.value);
+    behaviourSelect.value = behaviours[Math.floor(Math.random() * behaviours.length)];
+    behaviour = behaviourSelect.value;
+    // Colours (generate random hex colours)
+    const randHex = () => '#' + Math.floor(Math.random() * 0xffffff).toString(16).padStart(6, '0');
+    colourPicker.value = randHex();
+    if (colourPicker2) colourPicker2.value = randHex();
+    if (colourPicker3) colourPicker3.value = randHex();
+    particleColours = [colourPicker.value, colourPicker2 ? colourPicker2.value : colourPicker.value, colourPicker3 ? colourPicker3.value : colourPicker.value];
+    particleColour = colourPicker.value;
+    invertedColour = invertHex(particleColour);
+    // Sliders
+    sizeRange.value = Math.floor(Math.random() * (parseInt(sizeRange.max) - parseInt(sizeRange.min) + 1)) + parseInt(sizeRange.min);
+    glowRange.value = Math.floor(Math.random() * (parseInt(glowRange.max) - parseInt(glowRange.min) + 1)) + parseInt(glowRange.min);
+    speedRange.value = Math.floor(Math.random() * (parseInt(speedRange.max) - parseInt(speedRange.min) + 1)) + parseInt(speedRange.min);
+    pointerRange.value = Math.floor(Math.random() * (parseInt(pointerRange.max) - parseInt(pointerRange.min) + 1)) + parseInt(pointerRange.min);
+    // Mic
+    micCheckbox.checked = Math.random() < 0.5;
+    micEnabled = micCheckbox.checked;
+    if (micEnabled) initAudio();
+    // Advanced controls
+    if (alphaRange) alphaRange.value = Math.floor(Math.random() * 101);
+    if (rotationRange) rotationRange.value = Math.floor(Math.random() * 21);
+    if (resolutionRange) resolutionRange.value = Math.floor(Math.random() * 151) + 50;
+    if (micSensitivityRange) micSensitivityRange.value = Math.floor(Math.random() * 101);
+    particleAlpha = alphaRange ? alphaRange.value / 100 : 1;
+    rotationSpeed = rotationRange ? rotationRange.value / 100 : 0;
+    resolutionFactor = resolutionRange ? resolutionRange.value / 100 : 1;
+    micSensitivity = micSensitivityRange ? micSensitivityRange.value / 100 : 1;
+    // Background colour
+    if (bgColorPicker) {
+      bgColorPicker.value = randHex();
+      backgroundColour = bgColorPicker.value;
+      document.body.style.backgroundColor = backgroundColour;
+    }
+    // Regenerate preset shapes
+    if (emitterShape !== 'draw') generatePresetShape(emitterShape);
+    initParticles();
   }
 
   /**
