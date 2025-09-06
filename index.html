@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spatialgineers Experience Visualizer</title>
+    <!--
+      This web application implements a fully custom particle visualiser.  It
+      replaces the previous Eternal Flame visualiser with a modular system
+      built around a canvas and a set of controls.  Users can choose from
+      several emitter presets, customise particle colours, upload one or
+      multiple textures to use as particles, select or upload a background,
+      and even draw their own path along which particles will loop.
+
+      The HTML provides the basic structural layout: a side panel of
+      controls and a full‑screen canvas for rendering.  All styling lives
+      in the accompanying style.css and behaviour in script.js.
+    -->
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Control panel -->
+    <div id="controls">
+      <h1>SGX Particle Visualizer</h1>
+      <div class="control-group">
+        <label for="particleCount">Number of particles</label>
+        <input type="number" id="particleCount" min="1" max="2000" value="300" />
+      </div>
+      <div class="control-group">
+        <label for="shapeSelect">Emitter shape</label>
+        <select id="shapeSelect">
+          <option value="none">None (point)</option>
+          <option value="circle">Circle</option>
+          <option value="line">Line</option>
+          <option value="square">Square</option>
+          <option value="draw">Drawn Path</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="behaviorSelect">Particle behaviour</label>
+        <select id="behaviorSelect">
+          <option value="center">From Centre</option>
+          <option value="bottom">From Bottom</option>
+          <option value="top">From Top</option>
+          <option value="random">Random</option>
+          <option value="bars">Bars</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label for="colourPicker">Particle colour</label>
+        <input type="color" id="colourPicker" value="#ff6600" />
+      </div>
+      <div class="control-group">
+        <label for="sizeRange">Particle size</label>
+        <input type="range" id="sizeRange" min="1" max="20" value="6" />
+      </div>
+      <div class="control-group">
+        <label for="glowRange">Glow intensity</label>
+        <input type="range" id="glowRange" min="0" max="50" value="0" />
+      </div>
+      <div class="control-group">
+        <label for="speedRange">Speed multiplier</label>
+        <input type="range" id="speedRange" min="1" max="20" value="10" />
+      </div>
+      <div class="control-group">
+        <label for="pointerRange">Pointer wind strength</label>
+        <input type="range" id="pointerRange" min="0" max="100" value="0" />
+      </div>
+      <div class="control-group">
+        <label><input type="checkbox" id="micCheckbox" /> Mic reactive</label>
+      </div>
+      <div class="control-group">
+        <label for="particleImages">Particle texture (upload one or more)</label>
+        <input type="file" id="particleImages" accept="image/*" multiple />
+      </div>
+      <div class="control-group">
+        <label for="backgroundImage">Background image</label>
+        <input type="file" id="backgroundImage" accept="image/*" />
+      </div>
+      <div class="control-group">
+        <button id="clearPath">Clear Path</button>
+      </div>
+      <div class="control-group">
+        <button id="resetParticles">Reset Particles</button>
+      </div>
+      <div class="control-group">
+        <button id="embedButton">Generar Embed</button>
+      </div>
+      <!-- Branding -->
+      <div id="branding">Spatialgineers Visualizer</div>
+    </div>
+    <!-- Rendering canvas -->
+    <canvas id="canvas"></canvas>
+    <script src="script.js"></script>
+  </body>
+</html>

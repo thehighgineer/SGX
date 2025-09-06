@@ -1,0 +1,107 @@
+/*
+  Core styling for the Spatialgineers Experience Visualizer.  The layout
+  divides the viewport into a fixed‑width control panel and a flexible
+  canvas area.  Modern CSS techniques such as flexbox are used to
+  ensure the interface scales gracefully across devices.  Colour
+  variables are defined for easier theming.
+*/
+
+:root {
+  --control-bg: #111;
+  --control-fg: #eee;
+  --accent: #ff6600;
+  --border-radius: 4px;
+  --control-width: 320px;
+  --control-padding: 16px;
+}
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: #000;
+  color: var(--control-fg);
+  display: flex;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Control panel styling */
+#controls {
+  width: var(--control-width);
+  background: var(--control-bg);
+  padding: var(--control-padding);
+  box-sizing: border-box;
+  overflow-y: auto;
+  border-right: 2px solid #333;
+  position: relative;
+}
+
+#controls h1 {
+  margin-top: 0;
+  font-size: 1.4rem;
+  color: var(--accent);
+  text-transform: uppercase;
+}
+
+.control-group {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.control-group label {
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.control-group input[type="number"],
+.control-group select,
+.control-group input[type="color"],
+.control-group input[type="file"] {
+  padding: 6px;
+  border-radius: var(--border-radius);
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: var(--control-fg);
+  font-size: 0.9rem;
+}
+
+.control-group input[type="file"] {
+  padding: 2px;
+  color: #ccc;
+}
+
+.control-group button {
+  padding: 8px;
+  border: none;
+  border-radius: var(--border-radius);
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.control-group button:hover {
+  background: #e65a00;
+}
+
+/* Canvas fills the rest of the viewport */
+#canvas {
+  flex-grow: 1;
+  display: block;
+  width: calc(100vw - var(--control-width));
+  height: 100vh;
+  background: #000;
+  cursor: crosshair;
+}
+
+/* Branding at bottom left of control panel */
+#branding {
+  position: absolute;
+  bottom: 8px;
+  left: var(--control-padding);
+  font-size: 0.8rem;
+  color: var(--accent);
+  opacity: 0.7;
+}
