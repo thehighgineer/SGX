@@ -13,14 +13,16 @@
   --control-fg: #e0e0e0; /* light foreground */
   --accent: #fdcc0d;    /* metallic yellow accent */
   --secondary: #888888; /* secondary grey */
-  --border-radius: 4px;
+  --border-radius: 6px;
   --control-width: 320px;
   --control-padding: 16px;
 }
 
 body {
   margin: 0;
-  font-family: Arial, sans-serif;
+  /* Use a modern sans-serif font stack.  Inter and Segoe UI provide
+     a clean, smooth appearance; fall back to system fonts otherwise. */
+  font-family: "Inter", "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background: #000;
   color: var(--control-fg);
   display: flex;
@@ -38,6 +40,9 @@ body {
   border-right: 2px solid #333;
   position: relative;
   transition: transform 0.3s ease;
+  /* Slight drop shadow to elevate the panel above the canvas */
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  border-radius: var(--border-radius);
 }
 
 #controls h1 {
@@ -69,6 +74,8 @@ body {
   background: #1a1a1a;
   color: var(--control-fg);
   font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
 .control-group input[type="file"] {
@@ -84,10 +91,11 @@ body {
   color: #fff;
   cursor: pointer;
   font-size: 0.9rem;
+  transition: background 0.2s ease;
 }
 
 .control-group button:hover {
-  background: #e65a00;
+  background: #e5b607;
 }
 
 /* Canvas fills the rest of the viewport */
@@ -98,6 +106,7 @@ body {
   height: 100vh;
   background: #000;
   cursor: crosshair;
+  transition: width 0.3s ease;
 }
 
 /* Branding at bottom left of control panel */
@@ -126,6 +135,14 @@ body {
 /* Hidden controls class toggled via script */
 .hidden {
   display: none !important;
+}
+
+/* When controls are hidden, the canvas should expand to the full window width */
+body.controls-hidden #controls {
+  display: none;
+}
+body.controls-hidden #canvas {
+  width: 100vw;
 }
 
 /* Advanced panel styling */

@@ -78,6 +78,11 @@
   let controlsHidden = false;
   // Flag for embed mode (no controls)
   let embedMode = false;
+  // Current glow applied to particles.  This is computed in the
+  // animation loop from the UI slider plus base configuration and
+  // referenced in drawParticle() so that the glow intensity respects
+  // both base and slider values.
+  let currentGlow = 0;
   // Audio and pointer
   let micEnabled = false;
   let audioCtx = null;
@@ -88,6 +93,12 @@
   let pointerPos = { x: 0, y: 0, active: false };
 
   // Configuration defaults
+  // These values define the baseline behaviour for particle count,
+  // size, glow, speed and pointer wind.  They may be overridden via
+  // the Base Config panel and act as multipliers or offsets for the
+  // interactive sliders.  Changing them allows the user to shift the
+  // overall range of parameters without losing the fine‑grained
+  // control offered by the UI sliders.
   const CONFIG = {
     maxParticles: 2000,
     particleBaseSize: 6,
@@ -95,6 +106,15 @@
     baseSpeed: 1,
     pointerStrength: 0,
     barCount: 32
+  };
+
+  // Keep a copy of the initial defaults so that we can compute
+  // relative scaling factors when the base configuration is changed.
+  const DEFAULT_CONFIG = {
+    particleBaseSize: 6,
+    glow: 0,
+    baseSpeed: 1,
+    pointerStrength: 0
   };
 
   /**
@@ -339,9 +359,11 @@
     ctx.save();
     // global alpha for transparency
     ctx.globalAlpha = particleAlpha;
-    // set shadow (glow) per particle
+    // set shadow (glow) per particle.  The glow intensity comes from
+    // currentGlow which combines the base glow value and the glow
+    // slider value.  Colour is derived from the particle colour.
     ctx.shadowColor = p.colour;
-    ctx.shadowBlur = CONFIG.glow;
+    ctx.shadowBlur = currentGlow;
     ctx.translate(p.x, p.y);
     if (p.rotation) ctx.rotate(p.rotation);
     if (p.texture) {
@@ -480,6 +502,31 @@
       ctx.fillStyle = backgroundColour;
       ctx.fillRect(0, 0, canvas.width, canvas.height);
     }
+    // Draw the drawn path if present.  When emitterShape is 'draw',
+    // visualise the path so the user can see what has been traced.
+    if (emitterShape === 'draw' && pathPoints.length > 1) {
+      ctx.save();
+      ctx.beginPath();
+      // Use the accent colour from the CSS variables for the path outline.
+      // Fallback to a hardcoded colour if the variable isn't available.
+      let accent = '#fdcc0d';
+      try {
+        const style = getComputedStyle(document.documentElement);
+        const varAccent = style.getPropertyValue('--accent').trim();
+        if (varAccent) accent = varAccent;
+      } catch (e) {
+        // ignore errors (e.g. in testing environment)
+      }
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 2;
+      ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+      for (let i = 1; i < pathPoints.length; i++) {
+        ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
     // Update audio
     if (micEnabled && analyser) {
       analyser.getByteTimeDomainData(micData);
@@ -509,42 +556,66 @@
     // to make mic influence more noticeable on colour, speed and size.
     let micAmp = micAmplitude * micSensitivity * 5;
     if (micAmp > 1) micAmp = 1;
-    // Update config from sliders
-    CONFIG.particleBaseSize = parseFloat(sizeRange.value);
-    CONFIG.glow = parseFloat(glowRange.value);
-    CONFIG.pointerStrength = parseFloat(pointerRange.value);
-    const speedMultiplier = parseFloat(speedRange.value) / 10;
-    // baseSpeed increases with mic amplitude
-    CONFIG.baseSpeed = speedMultiplier * (1 + micAmp);
+    // Compute effective values combining base configuration and UI controls.
+    // The base configuration defines an overall scaling or offset, while the
+    // sliders provide fine adjustment within that range.  For example,
+    // increasing the base size will scale up all particle sizes by that
+    // factor, and increasing base speed will proportionally increase
+    // particle velocities.  Glow and pointer strength add their base
+    // values to the slider values.
+    const sliderSize = parseFloat(sizeRange.value);
+    const sliderGlow = parseFloat(glowRange.value);
+    const sliderPointer = parseFloat(pointerRange.value);
+    const speedMult = parseFloat(speedRange.value) / 10;
+    // Particle size scales relative to the default base size.  If the
+    // user increases the base size, all slider values effectively scale
+    // up by that ratio.
+    const sizeScale = CONFIG.particleBaseSize / DEFAULT_CONFIG.particleBaseSize;
+    const effectiveBaseSize = sliderSize * sizeScale;
+    // Glow adds a base offset rather than scaling.  This prevents
+    // extremely large glows when the slider is high but allows the
+    // baseline to be increased via the Base Config panel.
+    currentGlow = sliderGlow + CONFIG.glow;
+    // Pointer wind adds a base offset as well.
+    const effectivePointer = sliderPointer + CONFIG.pointerStrength;
+    // Speed multiplies base speed with the slider value and microphone
+    // amplitude.  A slider of 10 corresponds to a multiplier of 1 and
+    // scales linearly with the base speed.  Mic amplitude further
+    // modulates the speed.
+    const dynamicSpeedMult = speedMult * (1 + micAmp);
+    const effectiveSpeed = CONFIG.baseSpeed * dynamicSpeedMult;
     // Update and draw particles
     particles.forEach(p => {
-      // update colour and size based on mic amplitude
+      // update colour based on mic amplitude
       const invCol = invertHex(p.baseColour);
       p.colour = lerpColour(p.baseColour, invCol, micAmp);
-      // base size plus mic influence
-      p.size = CONFIG.particleBaseSize + Math.random() * 2 + micAmp * CONFIG.particleBaseSize;
-      // update rotation for textures
+      // size: use slider as absolute size, scaled by mic amplitude
+      // Base size for this frame scales the slider by the base
+      // configuration ratio.  Mic amplitude modulates size as before.
+      const baseSz = effectiveBaseSize;
+      p.size = baseSz + Math.random() * 2 + micAmp * baseSz;
+      // rotation for textures
       if (rotationSpeed > 0) {
-        p.rotation = (p.rotation || 0) + rotationSpeed * CONFIG.baseSpeed;
+        p.rotation = (p.rotation || 0) + rotationSpeed * effectiveSpeed;
       }
       if (pathPoints.length >= 2 && emitterShape === 'draw') {
-        p.dist += CONFIG.baseSpeed;
+        p.dist += effectiveSpeed;
         if (p.dist > totalPathLength) p.dist -= totalPathLength;
         const pos = getPointOnPath(p.dist);
         p.x = pos.x;
         p.y = pos.y;
       } else if (behaviour === 'spiral' || behaviour === 'galaxy') {
-        p.angle += p.angularVelocity * CONFIG.baseSpeed;
+        p.angle += p.angularVelocity * effectiveSpeed;
         if (behaviour === 'galaxy') p.radius *= 0.9995;
         const cx = canvas.width / 2;
         const cy = canvas.height / 2;
         p.x = cx + Math.cos(p.angle) * p.radius;
         p.y = cy + Math.sin(p.angle) * p.radius;
-        p.rotation = (p.rotation || 0) + 0.05 * CONFIG.baseSpeed;
+        p.rotation = (p.rotation || 0) + 0.05 * effectiveSpeed;
       } else if (behaviour === 'bars') {
         const index = p.barIndex || 0;
         const val = freqData && freqData.length > index ? freqData[index] / 255 : 0;
-        p.vy = - (0.5 + val * 5) * CONFIG.baseSpeed;
+        p.vy = - (0.5 + val * 5) * effectiveSpeed;
         p.vx = 0;
         p.y += p.vy;
         if (p.y < -20) {
@@ -555,16 +626,16 @@
           p.y = canvas.height + 10;
         }
       } else {
-        p.x += p.vx * CONFIG.baseSpeed;
-        p.y += p.vy * CONFIG.baseSpeed;
+        p.x += p.vx * effectiveSpeed;
+        p.y += p.vy * effectiveSpeed;
       }
-      // Pointer wind
-      if (pointerPos.active && CONFIG.pointerStrength > 0) {
+      // Pointer wind effect based on effective pointer strength
+      if (pointerPos.active && effectivePointer > 0) {
         const dx = p.x - pointerPos.x;
         const dy = p.y - pointerPos.y;
         const distSq = dx * dx + dy * dy + 0.01;
         const dist = Math.sqrt(distSq);
-        const force = CONFIG.pointerStrength / distSq;
+        const force = effectivePointer / distSq;
         p.vx += (dx / dist) * force;
         p.vy += (dy / dist) * force;
       }
@@ -818,9 +889,18 @@
         controlsHidden = !controlsHidden;
         if (controlsHidden) {
           controlsDiv.classList.add('hidden');
+          // Add a class to the body to allow CSS to expand the canvas
+          document.body.classList.add('controls-hidden');
         } else {
           controlsDiv.classList.remove('hidden');
+          document.body.classList.remove('controls-hidden');
         }
+        // Resize canvas to fill available space and regenerate presets
+        resizeCanvas();
+        if (emitterShape !== 'draw') {
+          generatePresetShape(emitterShape);
+        }
+        initParticles();
       }
     });
   }
