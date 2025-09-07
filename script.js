@@ -69,6 +69,11 @@
   let pathLengths = [];
   let totalPathLength = 0;
   let drawingPath = false;
+  // When true, the drawn path is rendered on screen.  This is set
+  // while the user is actively drawing the path and cleared once
+  // drawing finishes.  The pathPoints remain to guide particle
+  // movement but are no longer displayed when showPath is false.
+  let showPath = false;
   let behaviour = behaviourSelect.value;
   let emitterShape = shapeSelect.value;
   let particleColour = colourPicker.value;
@@ -536,7 +541,7 @@
     // Draw the path while the user is actively drawing it.  Once
     // drawing is finished, the path remains in memory but is not
     // rendered so that the visual stays clean.
-    if (emitterShape === 'draw' && pathPoints.length > 1 && drawingPath) {
+    if (emitterShape === 'draw' && pathPoints.length > 1 && showPath) {
       ctx.save();
       ctx.beginPath();
       // Use the accent colour from the CSS variables for the path outline.
@@ -768,10 +773,22 @@
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
         if (!drawingPath) {
+          // Begin drawing: start collecting points and render the
+          // path.  Reset current path if starting fresh.
           drawingPath = true;
-          pathPoints.push({ x, y });
+          showPath = true;
+          // Start a new path by clearing existing points if no
+          // points have been recorded yet.  If we are resuming a
+          // previous path we continue appending points.
+          if (pathPoints.length === 0) {
+            pathPoints.push({ x, y });
+          }
         } else {
+          // Finish drawing: stop collecting points and hide the
+          // drawn path.  Compute lengths for smooth traversal and
+          // reinitialise particles to follow the new path.
           drawingPath = false;
+          showPath = false;
           if (pathPoints.length > 1) {
             computePathLengths();
             initParticles();
