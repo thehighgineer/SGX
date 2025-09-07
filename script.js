@@ -518,7 +518,8 @@
         // ignore errors (e.g. in testing environment)
       }
       ctx.strokeStyle = accent;
-      ctx.lineWidth = 2;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
       ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
       for (let i = 1; i < pathPoints.length; i++) {
         ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
@@ -557,33 +558,37 @@
     let micAmp = micAmplitude * micSensitivity * 5;
     if (micAmp > 1) micAmp = 1;
     // Compute effective values combining base configuration and UI controls.
-    // The base configuration defines an overall scaling or offset, while the
-    // sliders provide fine adjustment within that range.  For example,
-    // increasing the base size will scale up all particle sizes by that
-    // factor, and increasing base speed will proportionally increase
-    // particle velocities.  Glow and pointer strength add their base
-    // values to the slider values.
+    // The base configuration defines an overall scaling factor, while the
+    // sliders provide fine adjustment within that range.  For size and
+    // speed we multiply the slider by the ratio of the configured base
+    // value to its default.  For glow and pointer strength we add the
+    // base value to the slider so the baseline can be raised without
+    // exponential growth.
     const sliderSize = parseFloat(sizeRange.value);
     const sliderGlow = parseFloat(glowRange.value);
     const sliderPointer = parseFloat(pointerRange.value);
-    const speedMult = parseFloat(speedRange.value) / 10;
+    // Convert speed slider (1–10) to a multiplier around 1.0 (value/10)
+    const sliderSpeed = parseFloat(speedRange.value) / 10;
     // Particle size scales relative to the default base size.  If the
-    // user increases the base size, all slider values effectively scale
-    // up by that ratio.
+    // user increases the base size, the slider will be multiplied by
+    // this ratio.  This ensures that changing the base size visibly
+    // affects all particles.
     const sizeScale = CONFIG.particleBaseSize / DEFAULT_CONFIG.particleBaseSize;
     const effectiveBaseSize = sliderSize * sizeScale;
-    // Glow adds a base offset rather than scaling.  This prevents
-    // extremely large glows when the slider is high but allows the
-    // baseline to be increased via the Base Config panel.
+    // Glow adds the base glow to the slider.  The base glow is not
+    // multiplied to avoid extremely large values but allows the user to
+    // set a minimum glow intensity.
     currentGlow = sliderGlow + CONFIG.glow;
-    // Pointer wind adds a base offset as well.
+    // Pointer wind adds the base pointer strength to the slider.  This
+    // yields a stronger wind effect when the base configuration is
+    // increased.
     const effectivePointer = sliderPointer + CONFIG.pointerStrength;
-    // Speed multiplies base speed with the slider value and microphone
-    // amplitude.  A slider of 10 corresponds to a multiplier of 1 and
-    // scales linearly with the base speed.  Mic amplitude further
-    // modulates the speed.
-    const dynamicSpeedMult = speedMult * (1 + micAmp);
-    const effectiveSpeed = CONFIG.baseSpeed * dynamicSpeedMult;
+    // Speed multiplies the slider (normalised to ~1) by the ratio of
+    // configured base speed to its default.  This gives a direct
+    // proportional scaling effect.  Microphone amplitude further
+    // modulates the multiplier.
+    const dynamicSpeedMult = sliderSpeed * (CONFIG.baseSpeed / DEFAULT_CONFIG.baseSpeed) * (1 + micAmp);
+    const effectiveSpeed = dynamicSpeedMult;
     // Update and draw particles
     particles.forEach(p => {
       // update colour based on mic amplitude
