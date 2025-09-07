@@ -678,6 +678,14 @@
         const distSq = dx * dx + dy * dy + 0.01;
         const dist = Math.sqrt(distSq);
         const force = effectivePointer / distSq;
+       // Bounce particles within the visible canvas
+      const cw = canvas.width;
+      const ch = canvas.height;
+      if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
+      if (p.x > cw) { p.x = cw; p.vx = -Math.abs(p.vx); }
+      if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); }
+      if (p.y > ch) { p.y = ch; p.vy = -Math.abs(p.vy); }
+
         p.vx += (dx / dist) * force;
         p.vy += (dy / dist) * force;
       }
@@ -708,15 +716,25 @@
 
     // Draw foreground image on top of particles and bars.  Scale it to
     // occupy about 30% of the smaller canvas dimension and centre it.
-    if (foregroundTexture) {
-      const size = Math.min(canvas.width, canvas.height) * 0.3;
-      const x = (canvas.width - size) / 2;
-      const y = (canvas.height - size) / 2;
-      ctx.save();
-      ctx.globalAlpha = 1;
-      ctx.drawImage(foregroundTexture, x, y, size, size);
-      ctx.restore();
-    }
+  
+      
+      if (foregroundTexture) {
+        const dprBase = window.devicePixelRatio || 1;
+        const dpr = dprBase * resolutionFactor;
+        const cw = canvas.width / dpr;
+        const ch = canvas.height / dpr;
+        const sizeCSS = Math.min(cw, ch) * 0.3;
+        const xCSS = (cw - sizeCSS) / 2;
+        const yCSS = (ch - sizeCSS) / 2;
+        const sizePx = sizeCSS * dpr;
+        const xPx = xCSS * dpr;
+        const yPx = yCSS * dpr;
+        ctx.save();
+        ctx.globalAlpha = 1;
+        ctx.drawImage(foregroundTexture, xPx, yPx, sizePx, sizePx);
+        ctx.restore();
+      }
+}
     requestAnimationFrame(animate);
   }
 
