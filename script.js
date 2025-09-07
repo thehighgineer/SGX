@@ -528,215 +528,97 @@
    * interactions, particle updates and rendering.
    */
   function animate() {
-    // Clear and draw background colour or texture
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (backgroundTexture) {
-      ctx.drawImage(backgroundTexture, 0, 0, canvas.width, canvas.height);
-    } else {
-      ctx.fillStyle = backgroundColour;
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-    }
-    // Draw the drawn path if present.  When emitterShape is 'draw',
-    // visualise the path so the user can see what has been traced.
-    // Draw the path while the user is actively drawing it.  Once
-    // drawing is finished, the path remains in memory but is not
-    // rendered so that the visual stays clean.
-    if (emitterShape === 'draw' && pathPoints.length > 1 && showPath) {
-      ctx.save();
-      ctx.beginPath();
-      // Use the accent colour from the CSS variables for the path outline.
-      // Fallback to a hardcoded colour if the variable isn't available.
-      let accent = '#fdcc0d';
-      try {
-        const style = getComputedStyle(document.documentElement);
-        const varAccent = style.getPropertyValue('--accent').trim();
-        if (varAccent) accent = varAccent;
-      } catch (e) {
-        // ignore errors (e.g. in testing environment)
-      }
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 4;
-      ctx.lineCap = 'round';
-      ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
-      for (let i = 1; i < pathPoints.length; i++) {
-        ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
-      }
-      ctx.stroke();
-      ctx.restore();
+  // preparar canvas según DPR y resolución
+  const dprBase = window.devicePixelRatio || 1;
+  const dpr = dprBase * (typeof resolutionFactor === 'number' ? resolutionFactor : 1);
+  const cw = canvas.width;
+  const ch = canvas.height;
+
+  // limpiar con coordenadas en CSS (ajustando transform al DPR)
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cw / dpr, ch / dpr);
+
+  // actualizar partículas
+  for (let i = 0; i < particles.length; i++) {
+    const p = particles[i];
+
+    // física básica
+    if (p.ax) p.vx += p.ax;
+    if (p.ay) p.vy += p.ay;
+    p.x += p.vx;
+    p.y += p.vy;
+
+    // viento por puntero (si está activo)
+    if (pointerPos && pointerPos.active && typeof effectivePointer === 'number' && effectivePointer > 0) {
+      const dx = p.x - pointerPos.x;
+      const dy = p.y - pointerPos.y;
+      const dist2 = dx * dx + dy * dy + 0.01;
+      const invDist = 1 / Math.sqrt(dist2);
+      const force = effectivePointer / dist2;
+      p.vx += dx * invDist * force;
+      p.vy += dy * invDist * force;
     }
 
-    // Update audio
-    if (micEnabled && analyser) {
-      analyser.getByteTimeDomainData(micData);
-      let sum = 0;
-      for (let i = 0; i < micData.length; i++) {
-        sum += Math.abs(micData[i] - 128);
-      }
-      micAmplitude = (sum / micData.length) / 128;
-      analyser.getByteFrequencyData(freqData);
-    } else {
-      micAmplitude = 0;
-    }
-    // Lerp between base colour and its inverse based on microphone amplitude and sensitivity
-    const lerpColour = (a, b, t) => {
-      const ar = parseInt(a.substr(1, 2), 16);
-      const ag = parseInt(a.substr(3, 2), 16);
-      const ab = parseInt(a.substr(5, 2), 16);
-      const br = parseInt(b.substr(1, 2), 16);
-      const bg = parseInt(b.substr(3, 2), 16);
-      const bb = parseInt(b.substr(5, 2), 16);
-      const r = Math.round(ar + (br - ar) * t);
-      const g = Math.round(ag + (bg - ag) * t);
-      const bcol = Math.round(ab + (bb - ab) * t);
-      return '#' + ((1 << 24) + (r << 16) + (g << 8) + bcol).toString(16).slice(1);
-    };
-    // Amplify microphone effect: multiply and clamp to [0,1].  Increase factor to 5
-    // to make mic influence more noticeable on colour, speed and size.
-    let micAmp = micAmplitude * micSensitivity * 5;
-    if (micAmp > 1) micAmp = 1;
-    // Compute effective values combining base configuration and UI controls.
-    // The base configuration defines an overall scaling factor, while the
-    // sliders provide fine adjustment within that range.  For size and
-    // speed we multiply the slider by the ratio of the configured base
-    // value to its default.  For glow and pointer strength we add the
-    // base value to the slider so the baseline can be raised without
-    // exponential growth.
-    const sliderSize = parseFloat(sizeRange.value);
-    const sliderGlow = parseFloat(glowRange.value);
-    const sliderPointer = parseFloat(pointerRange.value);
-    // Convert speed slider (1–10) to a multiplier around 1.0 (value/10)
-    const sliderSpeed = parseFloat(speedRange.value) / 10;
-    // Particle size scales relative to the default base size.  If the
-    // user increases the base size, the slider will be multiplied by
-    // this ratio.  This ensures that changing the base size visibly
-    // affects all particles.
-    const sizeScale = CONFIG.particleBaseSize / DEFAULT_CONFIG.particleBaseSize;
-    const effectiveBaseSize = sliderSize * sizeScale;
-    // Glow adds the base glow to the slider.  The base glow is not
-    // multiplied to avoid extremely large values but allows the user to
-    // set a minimum glow intensity.
-    currentGlow = sliderGlow + CONFIG.glow;
-    // Pointer wind adds the base pointer strength to the slider.  This
-    // yields a stronger wind effect when the base configuration is
-    // increased.
-    const effectivePointer = sliderPointer + CONFIG.pointerStrength;
-    // Speed multiplies the slider (normalised to ~1) by the ratio of
-    // configured base speed to its default.  This gives a direct
-    // proportional scaling effect.  Microphone amplitude further
-    // modulates the multiplier.
-    const dynamicSpeedMult = sliderSpeed * (CONFIG.baseSpeed / DEFAULT_CONFIG.baseSpeed) * (1 + micAmp);
-    const effectiveSpeed = dynamicSpeedMult;
-    // Update and draw particles
-    particles.forEach(p => {
-      // update colour based on mic amplitude
-      const invCol = invertHex(p.baseColour);
-      p.colour = lerpColour(p.baseColour, invCol, micAmp);
-      // size: use slider as absolute size, scaled by mic amplitude
-      // Base size for this frame scales the slider by the base
-      // configuration ratio.  Mic amplitude modulates size as before.
-      const baseSz = effectiveBaseSize;
-      p.size = baseSz + Math.random() * 2 + micAmp * baseSz;
-      // rotation for textures
-      if (rotationSpeed > 0) {
-        p.rotation = (p.rotation || 0) + rotationSpeed * effectiveSpeed;
-      }
-      if (pathPoints.length >= 2 && emitterShape === 'draw') {
-        p.dist += effectiveSpeed;
-        if (p.dist > totalPathLength) p.dist -= totalPathLength;
-        const pos = getPointOnPath(p.dist);
-        p.x = pos.x;
-        p.y = pos.y;
-      } else if (behaviour === 'spiral' || behaviour === 'galaxy') {
-        p.angle += p.angularVelocity * effectiveSpeed;
-        if (behaviour === 'galaxy') p.radius *= 0.9995;
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        p.x = cx + Math.cos(p.angle) * p.radius;
-        p.y = cy + Math.sin(p.angle) * p.radius;
-        p.rotation = (p.rotation || 0) + 0.05 * effectiveSpeed;
-      } else if (behaviour === 'bars') {
-        const index = p.barIndex || 0;
-        const val = freqData && freqData.length > index ? freqData[index] / 255 : 0;
-        p.vy = - (0.5 + val * 5) * effectiveSpeed;
-        p.vx = 0;
-        p.y += p.vy;
-        if (p.y < -20) {
-          const barW = canvas.width / CONFIG.barCount;
-          const newIndex = Math.floor(Math.random() * CONFIG.barCount);
-          p.barIndex = newIndex;
-          p.x = newIndex * barW + barW / 2;
-          p.y = canvas.height + 10;
-        }
-      } else {
-        p.x += p.vx * effectiveSpeed;
-        p.y += p.vy * effectiveSpeed;
-      }
-      // Pointer wind effect based on effective pointer strength
-      if (pointerPos.active && effectivePointer > 0) {
-        const dx = p.x - pointerPos.x;
-        const dy = p.y - pointerPos.y;
-        const distSq = dx * dx + dy * dy + 0.01;
-        const dist = Math.sqrt(distSq);
-        const force = effectivePointer / distSq;
-       // Bounce particles within the visible canvas
-      const cw = canvas.width;
-      const ch = canvas.height;
-      if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
-      if (p.x > cw) { p.x = cw; p.vx = -Math.abs(p.vx); }
-      if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); }
-      if (p.y > ch) { p.y = ch; p.vy = -Math.abs(p.vy); }
+    // rebote SIEMPRE dentro del canvas visible
+    if (p.x < 0) { p.x = 0; p.vx = Math.abs(p.vx); }
+    if (p.x > cw) { p.x = cw; p.vx = -Math.abs(p.vx); }
+    if (p.y < 0) { p.y = 0; p.vy = Math.abs(p.vy); }
+    if (p.y > ch) { p.y = ch; p.vy = -Math.abs(p.vy); }
 
-        p.vx += (dx / dist) * force;
-        p.vy += (dy / dist) * force;
-      }
-      // Respawn conditions for non-path/spiral/galaxy/bars
-      if (behaviour !== 'bars' && behaviour !== 'spiral' && behaviour !== 'galaxy' && emitterShape !== 'draw') {
-        if (p.x < -20 || p.x > canvas.width + 20 || p.y < -20 || p.y > canvas.height + 20) {
-          spawnParticle(p);
-        }
-      }
-      drawParticle(p);
-    });
-    // Draw bar visualiser overlay
-    if (behaviour === 'bars' && freqData) {
-      const barW = canvas.width / CONFIG.barCount;
-      ctx.save();
-      // ensure full opacity for bars
-      ctx.globalAlpha = 1;
-      for (let i = 0; i < CONFIG.barCount; i++) {
-        const val = freqData[i] / 255;
-        const h = val * canvas.height * 0.5;
-        // colour per bar based on first base colour
-        const barCol = lerpColour(particleColours[0], invertHex(particleColours[0]), val);
-        ctx.fillStyle = barCol;
-        ctx.fillRect(i * barW, canvas.height - h, barW - 2, h);
-      }
-      ctx.restore();
-    }
-
-    // Draw foreground image on top of particles and bars.  Scale it to
-    // occupy about 30% of the smaller canvas dimension and centre it.
-  
-      
-      if (foregroundTexture) {
-        const dprBase = window.devicePixelRatio || 1;
-        const dpr = dprBase * resolutionFactor;
-        const cw = canvas.width / dpr;
-        const ch = canvas.height / dpr;
-        const sizeCSS = Math.min(cw, ch) * 0.3;
-        const xCSS = (cw - sizeCSS) / 2;
-        const yCSS = (ch - sizeCSS) / 2;
-        const sizePx = sizeCSS * dpr;
-        const xPx = xCSS * dpr;
-        const yPx = yCSS * dpr;
-        ctx.save();
-        ctx.globalAlpha = 1;
-        ctx.drawImage(foregroundTexture, xPx, yPx, sizePx, sizePx);
-        ctx.restore();
-      }
-}
-    requestAnimationFrame(animate);
+    // dibujar partícula
+    ctx.save();
+    const alpha = p.alpha != null ? p.alpha : 1;
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = p.colour || p.color || '#ffffff';
+    const r = p.size || p.radius || 2;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
+
+  // modo barras (si existe)
+  if (behaviour === 'bars' && typeof freqData !== 'undefined' && freqData) {
+    const barCount = 64;
+    const w = (cw / dpr) / barCount;
+    for (let i = 0; i < barCount; i++) {
+      const v = freqData[i] || 0;
+      const h = ((v / 255) * (ch / dpr)) * 0.9;
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(i * w, (ch / dpr) - h, w * 0.9, h);
+    }
+  }
+
+  // mostrar línea de path sólo mientras se dibuja (si tu proyecto usa showPath, úsalo aquí)
+  if (emitterShape === 'draw' && pathPoints && pathPoints.length > 1 && (typeof showPath === 'boolean' ? showPath : drawingPath)) {
+    ctx.save();
+    ctx.globalAlpha = 0.8;
+    ctx.strokeStyle = '#888888';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pathPoints[0].x, pathPoints[0].y);
+    for (let i = 1; i < pathPoints.length; i++) {
+      ctx.lineTo(pathPoints[i].x, pathPoints[i].y);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // foreground centrado en coordenadas CSS (independiente de resolución)
+  if (foregroundTexture) {
+    const cwCSS = cw / dpr;
+    const chCSS = ch / dpr;
+    const sizeCSS = Math.min(cwCSS, chCSS) * 0.30;
+    const xCSS = (cwCSS - sizeCSS) / 2;
+    const yCSS = (chCSS - sizeCSS) / 2;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.drawImage(foregroundTexture, xCSS, yCSS, sizeCSS, sizeCSS);
+    ctx.restore();
+  }
+
+  requestAnimationFrame(animate);
+}
 
   /**
    * Initialise all event listeners.
