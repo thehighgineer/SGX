@@ -47,6 +47,8 @@
   const advancedPanel = document.getElementById('advancedPanel');
   const brandingOverlay = document.getElementById('brandingOverlay');
   const controlsDiv = document.getElementById('controls');
+  // Input for uploading a foreground image
+  const foregroundImageInput = document.getElementById('foregroundImage');
   // Base configuration inputs for overriding CONFIG values
   const maxParticlesInput = document.getElementById('maxParticlesInput');
   const baseSizeInput = document.getElementById('baseSizeInput');
@@ -60,6 +62,9 @@
   let particles = [];
   let particleTextures = [];
   let backgroundTexture = null;
+  // Foreground texture loaded from a user file.  When defined, this image
+  // will be drawn centred on the canvas on top of the particles and bars.
+  let foregroundTexture = null;
   let pathPoints = [];
   let pathLengths = [];
   let totalPathLength = 0;
@@ -442,6 +447,30 @@
   }
 
   /**
+   * Load a foreground image from a file input.  The loaded image is
+   * stored in the global foregroundTexture and drawn centred on top of
+   * the particles.  Passing a falsy argument clears any existing
+   * foreground image.
+   *
+   * @param {File|null} file The file selected from the input or null to clear.
+   */
+  function loadForeground(file) {
+    if (!file) {
+      foregroundTexture = null;
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        foregroundTexture = img;
+      };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  /**
    * Generate built‑in paths for circle, line and square shapes.
    */
   function generatePresetShape(name) {
@@ -504,7 +533,10 @@
     }
     // Draw the drawn path if present.  When emitterShape is 'draw',
     // visualise the path so the user can see what has been traced.
-    if (emitterShape === 'draw' && pathPoints.length > 1) {
+    // Draw the path while the user is actively drawing it.  Once
+    // drawing is finished, the path remains in memory but is not
+    // rendered so that the visual stays clean.
+    if (emitterShape === 'draw' && pathPoints.length > 1 && drawingPath) {
       ctx.save();
       ctx.beginPath();
       // Use the accent colour from the CSS variables for the path outline.
@@ -668,6 +700,18 @@
       }
       ctx.restore();
     }
+
+    // Draw foreground image on top of particles and bars.  Scale it to
+    // occupy about 30% of the smaller canvas dimension and centre it.
+    if (foregroundTexture) {
+      const size = Math.min(canvas.width, canvas.height) * 0.3;
+      const x = (canvas.width - size) / 2;
+      const y = (canvas.height - size) / 2;
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.drawImage(foregroundTexture, x, y, size, size);
+      ctx.restore();
+    }
     requestAnimationFrame(animate);
   }
 
@@ -698,11 +742,20 @@
       initParticles();
     });
     colourPicker.addEventListener('input', e => {
+      // Update the primary particle colour.  Update the invert used for
+      // microphone colour modulation and also update the first entry in
+      // the particleColours array so newly spawned particles use the
+      // selected colour.  Regenerate particles to apply the change.
       particleColour = e.target.value;
       invertedColour = invertHex(particleColour);
+      particleColours[0] = particleColour;
+      initParticles();
     });
     particleImagesInput.addEventListener('change', e => loadParticleTextures(e.target.files));
     backgroundImageInput.addEventListener('change', e => loadBackground(e.target.files[0]));
+    if (foregroundImageInput) {
+      foregroundImageInput.addEventListener('change', e => loadForeground(e.target.files[0]));
+    }
     clearPathButton.addEventListener('click', () => {
       clearPath();
       emitterShape = shapeSelect.value;
@@ -778,6 +831,9 @@
       }
       if (backgroundTexture) {
         params.set('bgimg', backgroundTexture.src);
+      }
+      if (foregroundTexture) {
+        params.set('fgimg', foregroundTexture.src);
       }
       const base = window.location.origin + window.location.pathname;
       const url = `${base}?${params.toString()}`;
@@ -1000,6 +1056,15 @@
       const img = new Image();
       img.onload = () => {
         backgroundTexture = img;
+      };
+      img.src = url;
+    }
+    // Load foreground image passed via embed
+    if (params.has('fgimg')) {
+      const url = params.get('fgimg');
+      const img = new Image();
+      img.onload = () => {
+        foregroundTexture = img;
       };
       img.src = url;
     }
