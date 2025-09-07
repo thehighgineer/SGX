@@ -47,7 +47,13 @@
   const advancedPanel = document.getElementById('advancedPanel');
   const brandingOverlay = document.getElementById('brandingOverlay');
   const controlsDiv = document.getElementById('controls');
-  const customConfigInput = document.getElementById('customConfigInput');
+  // Base configuration inputs for overriding CONFIG values
+  const maxParticlesInput = document.getElementById('maxParticlesInput');
+  const baseSizeInput = document.getElementById('baseSizeInput');
+  const baseGlowInput = document.getElementById('baseGlowInput');
+  const baseSpeedInput = document.getElementById('baseSpeedInput');
+  const pointerStrengthInput = document.getElementById('pointerStrengthInput');
+  const barCountInput = document.getElementById('barCountInput');
   const applyConfigButton = document.getElementById('applyConfigButton');
 
   // State
@@ -682,11 +688,29 @@
       params.set('rotation', rotationRange ? rotationRange.value : '0');
       params.set('resolution', resolutionRange ? resolutionRange.value : '100');
       params.set('micsens', micSensitivityRange ? micSensitivityRange.value : '50');
-      params.set('bg', bgColorPicker ? bgColorPicker.value.replace('#','') : '000000');
+      params.set('bg', bgColorPicker ? bgColorPicker.value.replace('#', '') : '000000');
       params.set('embed', '1');
+      // Include uploaded particle textures and background in the embed.  We avoid
+      // calling encodeURIComponent here so that URLSearchParams will perform
+      // the correct encoding once when building the query string.  Each
+      // texture is stored as a data: URL generated from the FileReader.
+      if (particleTextures && particleTextures.length > 0) {
+        const imgs = particleTextures.map(img => img.src);
+        // join with semicolon so we can split later; URLSearchParams will
+        // escape semicolons appropriately.
+        params.set('imgs', imgs.join(';'));
+      }
+      if (backgroundTexture) {
+        params.set('bgimg', backgroundTexture.src);
+      }
       const base = window.location.origin + window.location.pathname;
       const url = `${base}?${params.toString()}`;
-      const embed = `<iframe src="${url}" width="800" height="600" style="border:0;" allowfullscreen></iframe>`;
+      // For the embed we want the iframe to fill its container rather than
+      // using a fixed pixel size.  Width and height are set to 100% so
+      // that the embed adapts to the size of the parent element (iframe
+      // or browser window).  This mirrors the behaviour of the old
+      // Eternal Flame visualiser which scaled to its frame.
+      const embed = `<iframe src="${url}" width="100%" height="100%" style="border:0; display:block;" allowfullscreen></iframe>`;
       window.prompt('Copia el siguiente embed para usar en otra página:', embed);
     });
 
@@ -747,28 +771,44 @@
         }
       });
     }
-    // Apply custom configuration values from JSON input
+    // Apply base configuration values from number inputs
     if (applyConfigButton) {
       applyConfigButton.addEventListener('click', () => {
-        if (!customConfigInput) return;
-        const text = customConfigInput.value.trim();
-        if (!text) return;
-        try {
-          const overrides = JSON.parse(text);
-          Object.keys(overrides).forEach(k => {
-            const val = overrides[k];
-            // Attempt to parse numeric values; otherwise assign directly
-            const num = parseFloat(val);
-            CONFIG[k] = isNaN(num) ? val : num;
-          });
-          // Recreate shapes and particles if configuration impacting counts/sizes changed
-          if (overrides.particleBaseSize || overrides.maxParticles) {
-            initParticles();
+        // Update CONFIG values from inputs if provided
+        if (maxParticlesInput) {
+          const val = parseInt(maxParticlesInput.value);
+          if (!isNaN(val) && val > 0) {
+            CONFIG.maxParticles = val;
+            // update UI max for particle count and clamp current value
+            if (countInput && countInput.max) {
+              countInput.max = val;
+              const current = parseInt(countInput.value);
+              if (current > val) countInput.value = val;
+            }
           }
-        } catch (err) {
-          console.error('Invalid JSON for custom config', err);
-          alert('Invalid JSON in custom config');
         }
+        if (baseSizeInput) {
+          const val = parseFloat(baseSizeInput.value);
+          if (!isNaN(val) && val > 0) CONFIG.particleBaseSize = val;
+        }
+        if (baseGlowInput) {
+          const val = parseFloat(baseGlowInput.value);
+          if (!isNaN(val) && val >= 0) CONFIG.glow = val;
+        }
+        if (baseSpeedInput) {
+          const val = parseFloat(baseSpeedInput.value);
+          if (!isNaN(val) && val >= 0) CONFIG.baseSpeed = val;
+        }
+        if (pointerStrengthInput) {
+          const val = parseFloat(pointerStrengthInput.value);
+          if (!isNaN(val) && val >= 0) CONFIG.pointerStrength = val;
+        }
+        if (barCountInput) {
+          const val = parseInt(barCountInput.value);
+          if (!isNaN(val) && val > 0) CONFIG.barCount = val;
+        }
+        // Recreate particles to reflect configuration changes
+        initParticles();
       });
     }
     // Keyboard shortcut to hide/show controls
@@ -845,6 +885,38 @@
       bgColorPicker.value = bgCol;
       backgroundColour = bgCol;
       document.body.style.backgroundColor = bgCol;
+    }
+    // Load particle textures passed via embed (semicolon‑separated list of data URLs)
+    if (params.has('imgs')) {
+      // URLSearchParams automatically decodes percent encoding, so we
+      // can split the value directly on semicolons.  Each entry is a
+      // data URL.  When loaded they will populate particleTextures.
+      const list = params.get('imgs').split(';');
+      particleTextures = [];
+      let loadedCount = 0;
+      list.forEach(url => {
+        if (!url) return;
+        const img = new Image();
+        img.onload = () => {
+          particleTextures.push(img);
+          loadedCount++;
+          if (loadedCount === list.length) {
+            // once all textures are loaded, reinitialise particles
+            initParticles();
+          }
+        };
+        img.src = url;
+      });
+    }
+    // Load background image passed via embed
+    if (params.has('bgimg')) {
+      // Similar to imgs above, the value is already decoded.
+      const url = params.get('bgimg');
+      const img = new Image();
+      img.onload = () => {
+        backgroundTexture = img;
+      };
+      img.src = url;
     }
     if (params.has('embed')) {
       // Hide controls for embed mode

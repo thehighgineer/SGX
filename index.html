@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Spatialgineers Experience Visualizer</title>
+    <title>SGX Visualizer</title>
     <!--
       This web application implements a fully custom particle visualiser.  It
       replaces the previous Eternal Flame visualiser with a modular system
@@ -126,11 +126,33 @@
         <div class="control-group">
           <button id="randomizeButton">Randomize</button>
         </div>
-        <!-- Custom config overrides: allow live editing of CONFIG values via JSON -->
+        <!-- Base configuration inputs: adjust core parameters directly -->
         <div class="control-group">
-          <label for="customConfigInput">Custom config (JSON)</label>
-          <textarea id="customConfigInput" rows="4" placeholder='{"particleBaseSize":10,"glow":5,"pointerStrength":50}'></textarea>
-          <button id="applyConfigButton">Apply Config</button>
+          <label for="maxParticlesInput">Max particles</label>
+          <input type="number" id="maxParticlesInput" min="100" max="5000" value="2000" />
+        </div>
+        <div class="control-group">
+          <label for="baseSizeInput">Base particle size</label>
+          <input type="number" id="baseSizeInput" min="1" max="200" value="6" />
+        </div>
+        <div class="control-group">
+          <label for="baseGlowInput">Base glow</label>
+          <input type="number" id="baseGlowInput" min="0" max="100" value="0" />
+        </div>
+        <div class="control-group">
+          <label for="baseSpeedInput">Base speed</label>
+          <input type="number" id="baseSpeedInput" min="0.1" max="20" step="0.1" value="1" />
+        </div>
+        <div class="control-group">
+          <label for="pointerStrengthInput">Pointer strength</label>
+          <input type="number" id="pointerStrengthInput" min="0" max="200" value="0" />
+        </div>
+        <div class="control-group">
+          <label for="barCountInput">Bar count</label>
+          <input type="number" id="barCountInput" min="4" max="128" value="32" />
+        </div>
+        <div class="control-group">
+          <button id="applyConfigButton">Apply Base Config</button>
         </div>
       </div>
       <!-- Branding -->
